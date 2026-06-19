@@ -71,6 +71,7 @@ with tab1:
             verdict = "High Risk" if prediction == 1 else "Low Risk"
 
             # 2. SUBMIT TO GOOGLE SHEET VIA BACKGROUND FORM WEBHOOK
+            # 2. SUBMIT TO GOOGLE SHEET VIA BACKGROUND FORM WEBHOOK
             import requests
             
             form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdDa3Q9Z7If0F_FkBSc5jJhsOSaiwLmi9T57XySDb6QNvF7bw/formResponse"
@@ -81,6 +82,19 @@ with tab1:
                 "entry.1617909605": verdict,
                 "entry.174503650": f"{probability*100:.1f}%"
             }
+            
+            # Send as standard application/x-www-form-urlencoded data
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            }
+            
+            response = requests.post(form_url, data=form_data, headers=headers)
+            
+            if response.status_code == 200:
+                st.sidebar.success("🔑 Tracking logged successfully.")
+            else:
+                st.sidebar.error(f"❌ Log failed with Status Code: {response.status_code}")
             
             response = requests.post(form_url, data=form_data)
             
