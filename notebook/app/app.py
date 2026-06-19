@@ -5,23 +5,25 @@ import joblib
 import plotly.graph_objects as go
 import plotly.express as px
 import os
+from datetime import datetime
+from streamlit_gsheets import GSheetsConnection
 
 # ---------- PAGE CONFIG ----------
 st.set_page_config(page_title="Diabetes Risk Predictor", page_icon="🩺", layout="wide")
 
-# ---------- LOAD MODEL + SCALER (Fixed Cloud Paths) ----------
-# ---------- LOAD MODEL + SCALER (Point to the app folder) ----------
-# Get the absolute path of the directory containing app.py (notebook/app/)
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+# ---------- GOOGLE SHEETS CONNECTION ----------
+# This connects to the sheet using the URL we will put in Secrets later
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Point directly to the files inside the same folder as app.py
+# ---------- LOAD MODEL + SCALER ----------
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(APP_DIR, "diabetes_model.pkl")
 scaler_path = os.path.join(APP_DIR, "scaler.pkl")
 
 model = joblib.load(model_path)
 scaler = joblib.load(scaler_path)
 
-# ---------- LOAD DATA (for comparison charts) ----------
+# ---------- LOAD DATA ----------
 columns = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
            "Insulin", "BMI", "DiabetesPedigreeFunction", "Age", "Outcome"]
 df = pd.read_csv(
@@ -45,6 +47,9 @@ tab1, tab2 = st.tabs(["🔍 Predict", "📊 Dataset Insights"])
 # ================= TAB 1: PREDICTION =================
 with tab1:
     st.subheader("Enter patient details")
+    
+    # NEW: Ask for the visitor's name right at the top
+    visitor_name = st.text_input("Your Name / Organization", placeholder="e.g., Harshit Gupta")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -59,83 +64,106 @@ with tab1:
         age = st.slider("Age", 18, 100, 30)
 
     if st.button("Predict Risk", type="primary"):
-        input_data = pd.DataFrame([[pregnancies, glucose, blood_pressure, skin_thickness,
-                                    insulin, bmi, dpf, age]], columns=feature_names)
-        input_scaled = scaler.transform(input_data)
+        # Force them to type a name before showing results
+        if not visitor_name.strip():
+            st.warning("Please enter your name above to generate the prediction report.")
+        else:
+            input_data = pd.DataFrame([[pregnancies, glucose, blood_pressure, skin_thickness,
+                                        insulin, bmi, dpf, age]], columns=feature_names)
+            input_scaled = scaler.transform(input_data)
 
-        prediction = model.predict(input_scaled)[0]
-        probability = model.predict_proba(input_scaled)[0][1]  # prob of class 1
+            prediction = model.predict(input_scaled)[0]
+            probability = model.predict_proba(input_scaled)[0][1]  # prob of class 1
+            verdict = "High Risk" if prediction == 1 else "Low Risk"
 
-        st.divider()
-        res_col1, res_col2 = st.columns([1, 1])
+            # ---------------- BUSINESS LOGIC: SAVE TO GOOGLE SHEETS ----------------
+            try:
+                # 1. Read existing data from the sheet
+                existing_data = conn.read(ttl=0) # ttl=0 ensures cache is cleared
+                
+                # 2. Create a row for the new visitor
+                new_row = pd.DataFrame([{
+                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Name": visitor_name.strip(),
+                    "Risk Verdict": verdict,
+                    "Probability": f"{probability*100:.1f}%"
+                }])
+                
+                # 3. Combine and write back to Google Sheets
+                updated_data = pd.concat([existing_data, new_row], ignore_index=True)
+                conn.update(data=updated_data)
+            except Exception as e:
+                # Log error silently or display warning if database sync fails
+                st.sidebar.warning("Note: Logging service temporarily unavailable.")
 
-        # ---- Result Verdict ----
-        with res_col1:
-            if prediction == 1:
-                st.error(f"### ⚠️ High Risk of Diabetes")
-            else:
-                st.success(f"### ✅ Low Risk of Diabetes")
-            st.metric("Predicted Probability", f"{probability*100:.1f}%")
+            # ---------------- DISPLAY RESULTS ----------------
+            st.divider()
+            res_col1, res_col2 = st.columns([1, 1])
 
-        # ---- Gauge Chart ----
-        with res_col2:
-            fig_gauge = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=probability * 100,
-                title={'text': "Diabetes Risk %"},
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "darkred" if probability > 0.5 else "green"},
-                    'steps': [
-                        {'range': [0, 30], 'color': "#d4f4dd"},
-                        {'range': [30, 60], 'color': "#fff3cd"},
-                        {'range': [60, 100], 'color': "#f8d7da"},
-                    ],
-                    'threshold': {
-                        'line': {'color': "black", 'width': 4},
-                        'thickness': 0.75,
-                        'value': probability * 100
+            with res_col1:
+                if prediction == 1:
+                    st.error(f"### ⚠️ High Risk of Diabetes")
+                else:
+                    st.success(f"### ✅ Low Risk of Diabetes")
+                st.metric("Predicted Probability", f"{probability*100:.1f}%")
+
+            with res_col2:
+                fig_gauge = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=probability * 100,
+                    title={'text': "Diabetes Risk %"},
+                    gauge={
+                        'axis': {'range': [0, 100]},
+                        'bar': {'color': "darkred" if probability > 0.5 else "green"},
+                        'steps': [
+                            {'range': [0, 30], 'color': "#d4f4dd"},
+                            {'range': [30, 60], 'color': "#fff3cd"},
+                            {'range': [60, 100], 'color': "#f8d7da"},
+                        ],
+                        'threshold': {
+                            'line': {'color': "black", 'width': 4},
+                            'thickness': 0.75,
+                            'value': probability * 100
+                        }
                     }
-                }
-            ))
-            fig_gauge.update_layout(height=300, margin=dict(t=40, b=10))
-            st.plotly_chart(fig_gauge, use_container_width=True)
+                ))
+                fig_gauge.update_layout(height=300, margin=dict(t=40, b=10))
+                st.plotly_chart(fig_gauge, use_container_width=True)
 
-        st.divider()
+            st.divider()
 
-        # ---- Feature Importance (model coefficients) ----
-        st.subheader("What drives this prediction?")
-        coef_df = pd.DataFrame({
-            "Feature": feature_names,
-            "Importance": model.coef_[0]
-        }).sort_values("Importance", key=abs, ascending=True)
+            # ---- Feature Importance ----
+            st.subheader("What drives this prediction?")
+            coef_df = pd.DataFrame({
+                "Feature": feature_names,
+                "Importance": model.coef_[0]
+            }).sort_values("Importance", key=abs, ascending=True)
 
-        fig_importance = px.bar(
-            coef_df, x="Importance", y="Feature", orientation='h',
-            color="Importance", color_continuous_scale="RdBu",
-            title="Feature Influence (Logistic Regression Coefficients)"
-        )
-        st.plotly_chart(fig_importance, use_container_width=True)
-        st.caption("Positive = pushes prediction toward diabetes. Negative = pushes toward no diabetes.")
+            fig_importance = px.bar(
+                coef_df, x="Importance", y="Feature", orientation='h',
+                color="Importance", color_continuous_scale="RdBu",
+                title="Feature Influence (Logistic Regression Coefficients)"
+            )
+            st.plotly_chart(fig_importance, use_container_width=True)
 
-        # ---- Comparison vs population averages ----
-        st.subheader("How you compare to dataset averages")
-        diabetic_avg = df[df["Outcome"] == 1][feature_names].mean()
-        nondiabetic_avg = df[df["Outcome"] == 0][feature_names].mean()
+            # ---- Comparison vs population averages ----
+            st.subheader("How you compare to dataset averages")
+            diabetic_avg = df[df["Outcome"] == 1][feature_names].mean()
+            nondiabetic_avg = df[df["Outcome"] == 0][feature_names].mean()
 
-        compare_df = pd.DataFrame({
-            "Feature": feature_names,
-            "You": input_data.iloc[0].values,
-            "Avg (Diabetic)": diabetic_avg.values,
-            "Avg (Non-Diabetic)": nondiabetic_avg.values
-        })
+            compare_df = pd.DataFrame({
+                "Feature": feature_names,
+                "You": input_data.iloc[0].values,
+                "Avg (Diabetic)": diabetic_avg.values,
+                "Avg (Non-Diabetic)": nondiabetic_avg.values
+            })
 
-        fig_compare = go.Figure()
-        fig_compare.add_trace(go.Bar(name="You", x=compare_df["Feature"], y=compare_df["You"]))
-        fig_compare.add_trace(go.Bar(name="Avg (Diabetic)", x=compare_df["Feature"], y=compare_df["Avg (Diabetic)"]))
-        fig_compare.add_trace(go.Bar(name="Avg (Non-Diabetic)", x=compare_df["Feature"], y=compare_df["Avg (Non-Diabetic)"]))
-        fig_compare.update_layout(barmode='group', height=450)
-        st.plotly_chart(fig_compare, use_container_width=True)
+            fig_compare = go.Figure()
+            fig_compare.add_trace(go.Bar(name="You", x=compare_df["Feature"], y=compare_df["You"]))
+            fig_compare.add_trace(go.Bar(name="Avg (Diabetic)", x=compare_df["Feature"], y=compare_df["Avg (Diabetic)"]))
+            fig_compare.add_trace(go.Bar(name="Avg (Non-Diabetic)", x=compare_df["Feature"], y=compare_df["Avg (Non-Diabetic)"]))
+            fig_compare.update_layout(barmode='group', height=450)
+            st.plotly_chart(fig_compare, use_container_width=True)
 
 # ================= TAB 2: DATASET INSIGHTS =================
 with tab2:
