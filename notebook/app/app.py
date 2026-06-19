@@ -31,7 +31,7 @@ for col in cols_to_fix:
     df[col] = df[col].fillna(df[col].median())
 
 feature_names = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
-                  "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
+                 "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
 
 # ---------- TITLE ----------
 st.title("🩺 Diabetes Risk Predictor")
@@ -61,27 +61,29 @@ with tab1:
         if not visitor_name.strip():
             st.warning("Please enter your name above to generate the prediction report.")
         else:
+            # 1. CALCULATE ML MODEL PREDICTIONS
             input_data = pd.DataFrame([[pregnancies, glucose, blood_pressure, skin_thickness,
                                         insulin, bmi, dpf, age]], columns=feature_names)
             input_scaled = scaler.transform(input_data)
 
-            # ---------------- BUSINESS LOGIC: SUBMIT TO GOOGLE SHEET VIA FORM ----------------
+            prediction = model.predict(input_scaled)[0]
+            probability = model.predict_proba(input_scaled)[0][1]
+            verdict = "High Risk" if prediction == 1 else "Low Risk"
+
+            # 2. SUBMIT TO GOOGLE SHEET VIA BACKGROUND FORM WEBHOOK
             try:
                 import urllib.parse
                 import urllib.request
 
-                # Your exact Form response URL
                 form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdDa3Q9Z7If0F_FkBSc5jJhsOSaiwLmi9T57XySDb6QNvF7bw/formResponse"
                 
-                # Your exact matched field entry IDs mapping to your app variables
                 form_data = {
-                    "entry.397253068": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), # Timestamp
-                    "entry.692117473": visitor_name.strip(),                        # Name
-                    "entry.1617909605": verdict,                                    # Risk Verdict
-                    "entry.174503650": f"{probability*100:.1f}%"                    # Probability
+                    "entry.397253068": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), # '111' -> Timestamp
+                    "entry.692117473": visitor_name.strip(),                        # '222' -> Name
+                    "entry.1617909605": verdict,                                    # '333' -> Risk Verdict
+                    "entry.174503650": f"{probability*100:.1f}%"                    # '444' -> Probability
                 }
                 
-                # Silently submit the data in the background
                 encoded_data = urllib.parse.urlencode(form_data).encode("utf-8")
                 req = urllib.request.Request(form_url, data=encoded_data, headers={"User-Agent": "Mozilla/5.0"})
                 urllib.request.urlopen(req)
@@ -89,16 +91,8 @@ with tab1:
                 st.sidebar.success("🔑 Tracking logged successfully.")
             except Exception as e:
                 pass
-                updated_data = pd.concat([existing_data, new_row], ignore_index=True)
-                
-                # 4. Use Streamlit's built-in form action to push the update seamlessly 
-                # via an HTML form or simply append logs to your workspace. 
-                # For basic viewing sync, reading via pandas requires sharing as 'Anyone with link can view'
-                st.sidebar.success("🔑 Tracking logged successfully.")
-            except Exception as e:
-                pass
 
-            # ---------------- DISPLAY RESULTS ----------------
+            # 3. DISPLAY RESULTS & VISUALIZATIONS
             st.divider()
             res_col1, res_col2 = st.columns([1, 1])
 
@@ -161,35 +155,4 @@ with tab1:
             })
 
             fig_compare = go.Figure()
-            fig_compare.add_trace(go.Bar(name="You", x=compare_df["Feature"], y=compare_df["You"]))
-            fig_compare.add_trace(go.Bar(name="Avg (Diabetic)", x=compare_df["Feature"], y=compare_df["Avg (Diabetic)"]))
-            fig_compare.add_trace(go.Bar(name="Avg (Non-Diabetic)", x=compare_df["Feature"], y=compare_df["Avg (Non-Diabetic)"]))
-            fig_compare.update_layout(barmode='group', height=450)
-            st.plotly_chart(fig_compare, use_container_width=True)
-
-# ================= TAB 2: DATASET INSIGHTS =================
-with tab2:
-    st.subheader("Explore the training data")
-
-    c1, c2 = st.columns(2)
-    with c1:
-        x_axis = st.selectbox("X-axis", feature_names, index=1)
-    with c2:
-        y_axis = st.selectbox("Y-axis", feature_names, index=5)
-
-    fig_scatter = px.scatter(
-        df, x=x_axis, y=y_axis, color=df["Outcome"].map({0: "No Diabetes", 1: "Diabetes"}),
-        title=f"{x_axis} vs {y_axis}", opacity=0.7
-    )
-    st.plotly_chart(fig_scatter, use_container_width=True)
-
-    fig_hist = px.histogram(
-        df, x="Glucose", color=df["Outcome"].map({0: "No Diabetes", 1: "Diabetes"}),
-        barmode="overlay", nbins=30, title="Glucose Distribution by Outcome"
-    )
-    st.plotly_chart(fig_hist, use_container_width=True)
-
-    st.subheader("Class Distribution")
-    fig_pie = px.pie(df, names=df["Outcome"].map({0: "No Diabetes", 1: "Diabetes"}),
-                      title="Diabetes vs No Diabetes in Dataset")
-    st.plotly_chart(fig_pie, use_container_width=True)
+            fig_compare.add_trace
