@@ -5,6 +5,7 @@ import joblib
 import plotly.graph_objects as go
 import plotly.express as px
 import os
+import requests
 from datetime import datetime
 
 # ---------- PAGE CONFIG ----------
@@ -70,38 +71,24 @@ with tab1:
             probability = model.predict_proba(input_scaled)[0][1]
             verdict = "High Risk" if prediction == 1 else "Low Risk"
 
-            # 2. SUBMIT TO GOOGLE SHEET VIA BACKGROUND FORM WEBHOOK
-            # 2. SUBMIT TO GOOGLE SHEET VIA BACKGROUND FORM WEBHOOK
-            import requests
+            # 2. SUBMIT TO GOOGLE SHEET VIA WEB APP ENDPOINT
+            api_url = "https://script.google.com/macros/s/AKfycbzXEteZhkvHN4VEwvpWFz_UDKfqzOKC8d3Viyyj9eKXYHxGnQcaPbMqhhs1drNZpQfN1w/exec"
             
-            form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdDa3Q9Z7If0F_FkBSc5jJhsOSaiwLmi9T57XySDb6QNvF7bw/formResponse"
-            
-            form_data = {
-                "entry.397253068": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "entry.692117473": visitor_name.strip(),
-                "entry.1617909605": verdict,
-                "entry.174503650": f"{probability*100:.1f}%"
+            payload = {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "name": visitor_name.strip(),
+                "verdict": verdict,
+                "probability": f"{probability*100:.1f}%"
             }
             
-            # Send as standard application/x-www-form-urlencoded data
-            headers = {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-            }
-            
-            response = requests.post(form_url, data=form_data, headers=headers)
-            
-            if response.status_code == 200:
-                st.sidebar.success("🔑 Tracking logged successfully.")
-            else:
-                st.sidebar.error(f"❌ Log failed with Status Code: {response.status_code}")
-            
-            response = requests.post(form_url, data=form_data)
-            
-            if response.status_code == 200:
-                st.sidebar.success("🔑 Tracking logged successfully.")
-            else:
-                st.sidebar.error(f"❌ Log failed with Status Code: {response.status_code}")
+            try:
+                response = requests.post(api_url, params=payload)
+                if "Success" in response.text:
+                    st.sidebar.success("🔑 Tracking logged successfully.")
+                else:
+                    st.sidebar.error(f"❌ Log response error: {response.text}")
+            except Exception as e:
+                st.sidebar.error(f"❌ Connection failed: {str(e)}")
 
             # 3. DISPLAY RESULTS & VISUALIZATIONS
             st.divider()
