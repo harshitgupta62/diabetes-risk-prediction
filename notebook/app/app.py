@@ -10,14 +10,13 @@ import os
 st.set_page_config(page_title="Diabetes Risk Predictor", page_icon="🩺", layout="wide")
 
 # ---------- LOAD MODEL + SCALER (Fixed Cloud Paths) ----------
+# ---------- LOAD MODEL + SCALER (Point to the app folder) ----------
 # Get the absolute path of the directory containing app.py (notebook/app/)
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Navigate up one level to the 'notebook/' folder where the .pkl files live
-NOTEBOOK_DIR = os.path.abspath(os.path.join(APP_DIR, ".."))
-
-model_path = os.path.join(NOTEBOOK_DIR, "diabetes_model.pkl")
-scaler_path = os.path.join(NOTEBOOK_DIR, "scaler.pkl")
+# Point directly to the files inside the same folder as app.py
+model_path = os.path.join(APP_DIR, "diabetes_model.pkl")
+scaler_path = os.path.join(APP_DIR, "scaler.pkl")
 
 model = joblib.load(model_path)
 scaler = joblib.load(scaler_path)
