@@ -65,27 +65,30 @@ with tab1:
                                         insulin, bmi, dpf, age]], columns=feature_names)
             input_scaled = scaler.transform(input_data)
 
-            prediction = model.predict(input_scaled)[0]
-            probability = model.predict_proba(input_scaled)[0][1]
-            verdict = "High Risk" if prediction == 1 else "Low Risk"
-
-            # ---------------- BUSINESS LOGIC: SAVE TO GOOGLE SHEETS ----------------
+            # ---------------- BUSINESS LOGIC: SUBMIT TO GOOGLE SHEET VIA FORM ----------------
             try:
-                # 1. Construct the secret export URL from your secrets
-                sheet_url = st.secrets["private_sheet_url"]
-                csv_url = sheet_url.replace("/edit?usp=sharing", "/gviz/tq?tqx=out:csv")
+                import urllib.parse
+                import urllib.request
+
+                # Your exact Form response URL
+                form_url = "https://docs.google.com/forms/d/e/1FAIpQLSdDa3Q9Z7If0F_FkBSc5jJhsOSaiwLmi9T57XySDb6QNvF7bw/formResponse"
                 
-                # 2. Read current sheet content
-                existing_data = pd.read_csv(csv_url)
+                # Your exact matched field entry IDs mapping to your app variables
+                form_data = {
+                    "entry.397253068": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), # Timestamp
+                    "entry.692117473": visitor_name.strip(),                        # Name
+                    "entry.1617909605": verdict,                                    # Risk Verdict
+                    "entry.174503650": f"{probability*100:.1f}%"                    # Probability
+                }
                 
-                # 3. Append the new row
-                new_row = pd.DataFrame([{
-                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Name": visitor_name.strip(),
-                    "Risk Verdict": verdict,
-                    "Probability": f"{probability*100:.1f}%"
-                }])
+                # Silently submit the data in the background
+                encoded_data = urllib.parse.urlencode(form_data).encode("utf-8")
+                req = urllib.request.Request(form_url, data=encoded_data, headers={"User-Agent": "Mozilla/5.0"})
+                urllib.request.urlopen(req)
                 
+                st.sidebar.success("🔑 Tracking logged successfully.")
+            except Exception as e:
+                pass
                 updated_data = pd.concat([existing_data, new_row], ignore_index=True)
                 
                 # 4. Use Streamlit's built-in form action to push the update seamlessly 
