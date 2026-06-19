@@ -4,13 +4,23 @@ import numpy as np
 import joblib
 import plotly.graph_objects as go
 import plotly.express as px
+import os
 
 # ---------- PAGE CONFIG ----------
 st.set_page_config(page_title="Diabetes Risk Predictor", page_icon="🩺", layout="wide")
 
-# ---------- LOAD MODEL + SCALER ----------
-model = joblib.load("diabetes_model.pkl")
-scaler = joblib.load("scaler.pkl")
+# ---------- LOAD MODEL + SCALER (Fixed Cloud Paths) ----------
+# Get the absolute path of the directory containing app.py (notebook/app/)
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Navigate up one level to the 'notebook/' folder where the .pkl files live
+NOTEBOOK_DIR = os.path.abspath(os.path.join(APP_DIR, ".."))
+
+model_path = os.path.join(NOTEBOOK_DIR, "diabetes_model.pkl")
+scaler_path = os.path.join(NOTEBOOK_DIR, "scaler.pkl")
+
+model = joblib.load(model_path)
+scaler = joblib.load(scaler_path)
 
 # ---------- LOAD DATA (for comparison charts) ----------
 columns = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
@@ -51,7 +61,7 @@ with tab1:
 
     if st.button("Predict Risk", type="primary"):
         input_data = pd.DataFrame([[pregnancies, glucose, blood_pressure, skin_thickness,
-                                     insulin, bmi, dpf, age]], columns=feature_names)
+                                    insulin, bmi, dpf, age]], columns=feature_names)
         input_scaled = scaler.transform(input_data)
 
         prediction = model.predict(input_scaled)[0]
